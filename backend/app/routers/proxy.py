@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 
 from app.schemas import ActionPayload, ActionResult, EntryPayload, PageResult
 from app.services.proxy import ProxyService
+from app.store import store
 
 router = APIRouter(prefix="/api/proxy", tags=["代理池"])
 
@@ -63,6 +64,32 @@ def export_entries(
     return StreamingResponse(
         iter([output.getvalue()]), media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="proxy.csv"'})
+
+
+@router.get("/switches", response_model=dict)
+def list_switches() -> dict:
+    """代理切换清单：由反爬风险决策数据集生成，其它页面只读这一份结果。"""
+    items = service.switch_list()
+    return {"items": items, "total": len(items)}
+
+
+@router.post("/switches/rebuild", response_model=dict)
+def rebuild_switches(payload: dict[str, object] | None = None) -> dict:
+    """消费风险决策数据集生成切换清单；重复决策不会重复生成。"""
+    decisions = None
+    if isinstance(payload, dict) and isinstance(payload.get("decision_ids"), list):
+        wanted = {str(item) for item in payload["decision_ids"]}
+        decisions = [row for row in store.rows("_risk_decisions") if str(row.get("决策编号")) in wanted]
+    return service.build_switches(decisions)
+
+
+@router.post("/switches/{switch_id}/apply", response_model=ActionResult)
+def apply_switch(switch_id: int) -> ActionResult:
+    """执行代理切换，切换区域必须服从决策里的目标区域和熔断状态。"""
+    entry, message = service.run_switch(switch_id)
+    if entry is None:
+        return ActionResult(ok=False, message=message)
+    return ActionResult(ok=True, message=message, entry=entry)
 
 
 @router.get("/{entry_id}", response_model=dict)

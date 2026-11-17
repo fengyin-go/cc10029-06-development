@@ -610,6 +610,63 @@ test('分析看板模块：KPI卡片、运行分析、图表渲染', async ({ pa
   expect(browserErrors).toEqual([])
 })
 
+test('反爬风险决策：评分、去重、代理切换与策略停用', async ({ page }) => {
+  test.setTimeout(300_000)
+  const browserErrors: string[] = []
+  page.on('pageerror', e => browserErrors.push(e.message))
+  page.on('response', r => { if (r.url().includes('/api/') && r.status()>=400) browserErrors.push(`${r.status()} ${r.url()}`) })
+
+  const requestId = `REQ-E2E-${Date.now()}`
+  await page.goto('/antiblock')
+  const strategyRow = page.locator('tbody tr[data-testid^="row-"]').filter({ hasText: 'ANTI-0003' })
+  if (await strategyRow.getAttribute('data-status') === '已停用') {
+    await strategyRow.getByRole('button', { name: '启用配置', exact: true }).click()
+    await expect(strategyRow).toHaveAttribute('data-status', '已启用')
+  }
+  await strategyRow.getByRole('button', { name: '风险决策', exact: true }).click()
+  await expect(page.getByTestId('risk-detail')).toBeVisible()
+  await expect(page.getByTestId('risk-detail')).toContainText('命中条件')
+  await expect(page.getByTestId('risk-detail')).toContainText('代理切换建议')
+
+  await page.getByTestId('risk-input-请求标识').fill(requestId)
+  await page.getByTestId('risk-input-策略编号').fill('ANTI-0003')
+  await page.getByTestId('risk-input-响应状态码').fill('403')
+  await page.getByTestId('risk-input-响应耗时').fill('3200')
+  await page.getByTestId('risk-input-连续失败次数').fill('3')
+  await page.getByTestId('risk-input-目标区域').fill('华东')
+  await page.getByTestId('risk-assess').click()
+
+  const decisionRow = page.getByTestId(`risk-row-${requestId}`)
+  await expect(decisionRow).toHaveCount(1)
+  await expect(decisionRow).toContainText('已熔断')
+
+  await page.getByTestId('risk-assess').click()
+  await expect(page.getByTestId(`risk-row-${requestId}`)).toHaveCount(1)
+  await expect(page.getByTestId('risk-message')).toContainText('拒绝重复写入')
+
+  await page.goto('/proxy')
+  await page.getByTestId('switch-build').click()
+  const switchRow = page.locator('tr[data-testid^="switch-row-"]').filter({ hasText: requestId })
+  await expect(switchRow).toHaveCount(1)
+  await expect(switchRow).toContainText('华东')
+  await expect(switchRow).toHaveAttribute('data-switch-status', '待切换')
+  await switchRow.getByRole('button', { name: '执行切换', exact: true }).click()
+  await expect(page.locator('tr[data-testid^="switch-row-"]').filter({ hasText: requestId }))
+    .toHaveAttribute('data-switch-status', '已切换')
+
+  await page.goto('/antiblock')
+  const rowToDisable = page.locator('tbody tr[data-testid^="row-"]').filter({ hasText: 'ANTI-0003' })
+  await rowToDisable.getByRole('button', { name: '停用配置', exact: true }).click()
+  await expect(rowToDisable).toHaveAttribute('data-status', '已停用')
+  await page.getByTestId('risk-refresh').click()
+  await expect(page.getByTestId(`risk-row-${requestId}`)).toHaveAttribute('data-decision-status', '已失效')
+
+  await page.goto('/proxy')
+  await expect(page.locator('tr[data-testid^="switch-row-"]').filter({ hasText: requestId })).toHaveCount(0)
+
+  expect(browserErrors).toEqual([])
+})
+
 test('概览汇总', async ({ page }) => {
   test.setTimeout(300_000)
   const totalNew = modules.length * 3

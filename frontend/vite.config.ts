@@ -20,7 +20,8 @@ export default defineConfig({
     open: false,
     strictPort: false,
     proxy: {
-      '/api': {
+      // 用正则锚定 /api/ 前缀：字符串前缀 '/api' 会把 /apigate 这类页面路由也代理到后端。
+      '^/api/': {
         target: proxyTarget,
         changeOrigin: true,
       },

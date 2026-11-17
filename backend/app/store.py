@@ -30,6 +30,9 @@ class Store:
     def overview(self) -> dict[str, object]:
         modules: list[dict[str, object]] = []
         for name in self.module_names():
+            if name.startswith("_"):
+                # 反爬风险决策数据集与代理切换清单是内部表，不计入业务模块看板。
+                continue
             rows = self.rows(name)
             modules.append({
                 "name": name,

@@ -67,8 +67,8 @@ def export_entries(
 
 @router.get("/{entry_id}", response_model=dict)
 def get_entry(entry_id: int) -> dict:
-    """读取单条反爬策略明细；不存在时给出可读的错误说明。"""
-    entry = service.get_entry(entry_id)
+    """读取单条反爬策略明细；同时带回风险评分、命中条件与代理切换建议。"""
+    entry = service.get_detail(entry_id)
     if entry is None:
         raise HTTPException(status_code=404, detail=f"反爬策略 {entry_id} 不存在或已归档")
     return entry
@@ -81,6 +81,16 @@ def create_entry(payload: dict[str, object]) -> ActionResult:
     if missing:
         return ActionResult(ok=False, message=f"缺少必填字段：{'、'.join(missing)}")
     return ActionResult(ok=True, message="反爬策略已登记", entry=entry)
+
+
+@router.post("/{entry_id}/threshold", response_model=ActionResult)
+def adjust_threshold(entry_id: int, payload: dict[str, object]) -> ActionResult:
+    """请求执行中调整熔断阈值：策略版本递增，旧决策转为待重评，下游只会拿到一份完整决策。"""
+    value = payload.get("熔断阈值", payload.get("threshold"))
+    entry, message = service.adjust_threshold(entry_id, value)
+    if entry is None:
+        return ActionResult(ok=False, message=message)
+    return ActionResult(ok=True, message=message, entry=entry)
 
 
 @router.post("/{entry_id}/actions", response_model=ActionResult)

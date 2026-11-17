@@ -77,6 +77,13 @@ function openCreate() { createValues.value = {}; showCreate.value = true }
 async function submitCreate() {
   try { const res = await request(ENDPOINT, { method: 'POST', body: JSON.stringify({ values: createValues.value }) }); if(!res.ok) throw new Error('创建失败'); showCreate.value = false; await reload() } catch(e: any) { errorMessage.value = e.message }
 }
-function exportRows() { window.open(`${ENDPOINT}/export`, '_blank') }
+function exportRows() {
+  const link = document.createElement('a')
+  link.href = `${ENDPOINT}/export`
+  link.download = `${ENDPOINT.split('/').pop()}.csv`
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+}
 onMounted(reload)
 </script>
